@@ -1,0 +1,13 @@
+{
+  "name": "canli-soru-platformu",
+  "version": "1.0.0",
+  "description": "Yayıncı için canlı soru-cevap platformu",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}
