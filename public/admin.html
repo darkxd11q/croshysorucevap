@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Yayıncı Kontrol Paneli</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white font-sans p-8">
+
+    <div class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
+        
+        <!-- SORU EKLEME ALANI -->
+        <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
+            <h2 class="text-2xl font-bold mb-4 text-blue-400">➕ Yeni Soru Ekle</h2>
+            <input type="text" id="soru" placeholder="Soru Metni" class="w-full bg-gray-700 p-3 rounded mb-3 outline-none focus:ring-2 focus:ring-blue-500">
+            <input type="text" id="siklar" placeholder="Şıklar (Virgülle ayır: A,B,C,D)" class="w-full bg-gray-700 p-3 rounded mb-3 outline-none focus:ring-2 focus:ring-blue-500">
+            
+            <div class="flex gap-4 mb-4">
+                <input type="number" id="dogruCevap" placeholder="Doğru Şık (Örn: 1)" class="w-1/2 bg-gray-700 p-3 rounded outline-none focus:ring-2 focus:ring-blue-500">
+                <input type="number" id="fiyat" placeholder="Ödül (TL)" class="w-1/2 bg-gray-700 p-3 rounded outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            
+            <button onclick="sirayaEkle()" class="w-full bg-blue-600 hover:bg-blue-500 transition p-3 rounded font-bold text-lg shadow-lg">Sıraya Ekle</button>
+        </div>
+
+        <!-- YAYIN KONTROLÜ -->
+        <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
+            <h2 class="text-2xl font-bold mb-4 text-green-400">📺 Yayın Kontrolü</h2>
+            <div class="flex gap-4">
+                <button onclick="cevabiGoster()" class="w-full bg-yellow-500 hover:bg-yellow-400 text-black transition p-3 rounded font-bold text-lg shadow-lg hidden" id="btnCevapGoster">Doğru Cevabı Ekranda Göster</button>
+            </div>
+            <h3 class="mt-6 text-xl text-gray-300 font-semibold border-b border-gray-600 pb-2">Canlı Gelen Cevaplar</h3>
+            <ul id="cevapListesi" class="mt-4 h-48 overflow-y-auto space-y-2 text-sm">
+                <li class="text-gray-500 italic">Henüz cevap gelmedi...</li>
+            </ul>
+        </div>
+
+        <!-- SORU KUYRUĞU -->
+        <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 md:col-span-2">
+            <h2 class="text-2xl font-bold mb-4 text-purple-400">📋 Bekleyen Sorular (Kuyruk)</h2>
+            <div id="kuyrukListesi" class="space-y-3">
+                <p class="text-gray-500 italic">Sıraya eklenmiş soru yok.</p>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const socket = io();
+        let soruKuyrugu = [];
+        let yayindakiSoruIndex = null;
+
+        function sirayaEkle() {
+            const soru = document.getElementById('soru').value;
+            const siklar = document.getElementById('siklar').value.split(',').map(s => s.trim());
+            const dogruCevap = parseInt(document.getElementById('dogruCevap').value) - 1; // Array index
+            const fiyat = document.getElementById('fiyat').value;
+
+            if(!soru || siklar.length < 2) return alert("Lütfen soruları eksiksiz girin.");
+
+            soruKuyrugu.push({ soru, siklar, dogruCevap, fiyat });
+            kuyruguGuncelle();
+            
+            // Inputları temizle
+            document.getElementById('soru').value = '';
+            document.getElementById('siklar').value = '';
+            document.getElementById('dogruCevap').value = '';
+            document.getElementById('fiyat').value = '';
+        }
+
+        function kuyruguGuncelle() {
+            const liste = document.getElementById('kuyrukListesi');
+            liste.innerHTML = '';
+            soruKuyrugu.forEach((item, index) => {
+                liste.innerHTML += `
+                    <div class="flex justify-between items-center bg-gray-700 p-4 rounded-lg">
+                        <div>
+                            <span class="font-bold text-lg">${index + 1}. Soru:</span> ${item.soru} <br>
+                            <span class="text-green-400 text-sm">Ödül: ${item.fiyat} TL | Doğru Şık: ${item.dogruCevap + 1}</span>
+                        </div>
+                        <button onclick="yayinaAl(${index})" class="bg-purple-600 hover:bg-purple-500 px-6 py-2 rounded font-bold transition shadow">Yayına Al</button>
+                    </div>
+                `;
+            });
+        }
+
+        function yayinaAl(index) {
+            yayindakiSoruIndex = index;
+            socket.emit('admin_soru_yayinla', soruKuyrugu[index]);
+            document.getElementById('cevapListesi').innerHTML = ''; // Cevapları sıfırla
+            document.getElementById('btnCevapGoster').classList.remove('hidden'); // Cevabı göster butonunu aç
+            alert("Soru anında izleyicilere gönderildi!");
+        }
+
+        function cevabiGoster() {
+            if(yayindakiSoruIndex !== null) {
+                socket.emit('admin_cevabi_goster', soruKuyrugu[yayindakiSoruIndex].dogruCevap);
+                alert("Doğru cevap ekranlarda işaretlendi.");
+            }
+        }
+
+        socket.on('admin_canli_cevap_gor', (data) => {
+            const liste = document.getElementById('cevapListesi');
+            if(liste.innerHTML.includes('Henüz cevap gelmedi')) liste.innerHTML = '';
+            liste.innerHTML += `<li class="bg-gray-700 p-2 rounded"><strong>${data.isim}</strong> <span class="text-blue-400">👉 ${data.cevap}</span> seçti.</li>`;
+            // Otomatik aşağı kaydır
+            liste.scrollTop = liste.scrollHeight;
+        });
+    </script>
+</body>
+</html>
