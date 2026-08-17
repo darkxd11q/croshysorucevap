@@ -3,108 +3,168 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Canlı Bilgi Yarışması</title>
+    <title>Yayıncı Soru Ekranı</title>
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
 </head>
-<body class="bg-gray-950 text-white font-sans flex items-center justify-center min-h-screen p-4">
+<body class="bg-gray-950 text-white font-sans flex flex-col items-center justify-center min-h-screen p-6">
 
-    <!-- GİRİŞ EKRANI -->
-    <div id="girisEkrani" class="bg-gray-900 p-8 rounded-2xl shadow-2xl border border-gray-800 w-full max-w-md text-center transition-all">
-        <h2 class="text-3xl font-extrabold mb-6 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-500">Oyuna Katıl</h2>
-        <input type="text" id="isim" placeholder="Twitch Nickin veya Adın" class="w-full bg-gray-800 p-4 rounded-lg mb-4 text-center text-lg outline-none focus:ring-2 focus:ring-purple-500 border border-gray-700">
-        <button onclick="beklemeEkraninaGec()" class="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 transition p-4 rounded-lg font-bold text-lg shadow-lg">Bağlan</button>
-    </div>
-
-    <!-- SORU EKRANI -->
-    <div id="soruEkrani" class="hidden bg-gray-900 p-8 rounded-2xl shadow-2xl border border-gray-800 w-full max-w-2xl text-center">
-        <div id="beklemeMetni" class="animate-pulse">
-            <h2 class="text-2xl font-bold text-gray-400">Yayıncının soruyu göndermesi bekleniyor...</h2>
+    <div id="soruEkrani" class="w-full max-w-4xl text-center">
+        
+        <!-- Süre Barı -->
+        <div id="zamanAlani" class="hidden w-full bg-gray-800 h-4 rounded-full mb-6 overflow-hidden border border-gray-700">
+            <div id="zamanBar" class="bg-gradient-to-r from-blue-500 to-purple-500 h-full w-full transition-all duration-100 ease-linear"></div>
         </div>
 
-        <div id="aktifSoruAlani" class="hidden">
-            <div class="inline-block bg-green-900 text-green-400 px-4 py-1 rounded-full text-sm font-bold mb-4 border border-green-700">Ödül: <span id="gelenFiyat">0</span> TL</div>
-            <h3 id="gelenSoru" class="text-3xl font-bold mb-8 text-white">Soru buraya gelecek</h3>
-            <div id="butonlar" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <!-- Şıklar buraya JS ile eklenecek -->
+        <!-- Bekleme Alanı -->
+        <div id="beklemeMetni" class="bg-gray-900 p-12 rounded-3xl border border-gray-800 shadow-2xl animate-pulse">
+            <h2 class="text-3xl font-extrabold text-gray-500">Hazır Ol!</h2>
+            <p class="text-gray-600 mt-2">Sunucu sıradaki soruyu gönderiyor...</p>
+        </div>
+
+        <!-- Soru Kartı -->
+        <div id="aktifSoruAlani" class="hidden bg-gray-900 p-10 rounded-3xl shadow-2xl border border-gray-800 relative">
+            <div class="inline-block bg-yellow-500 text-black font-extrabold px-6 py-2 rounded-full text-lg mb-6 shadow-lg">Ödül: <span id="gelenFiyat">0</span> TL</div>
+            
+            <h3 id="gelenSoru" class="text-3xl md:text-4xl font-extrabold mb-10 text-white leading-relaxed"></h3>
+            
+            <div id="butonlar" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+            
+            <p id="durumMesaji" class="mt-6 font-bold text-xl h-8"></p>
+
+            <!-- İpucu Kartı -->
+            <div id="ipucuKutusu" class="hidden mt-8 p-4 bg-indigo-950 border border-indigo-500 rounded-2xl text-indigo-200 text-lg font-semibold animate-bounce">
+                💡 İpucu: <span id="ipucuMetni"></span>
             </div>
-            <p id="durumMesaji" class="mt-6 text-yellow-400 font-semibold h-6"></p>
         </div>
     </div>
 
     <script>
         const socket = io();
-        let secilenButon = null;
+        let timerInterval;
+        let secimYapildi = false;
+        let secilenButonIndex = null;
 
-        function beklemeEkraninaGec() {
-            if(!document.getElementById('isim').value) return alert("Lütfen bir isim gir!");
-            document.getElementById('girisEkrani').classList.add('hidden');
-            document.getElementById('soruEkrani').classList.remove('hidden');
-        }
-
-        socket.on('izleyiciye_soru_goster', (data) => {
+        socket.on('oyuncuya_soru_goster', (data) => {
+            // Ekranı temizle ve hazırla
             document.getElementById('beklemeMetni').classList.add('hidden');
             document.getElementById('aktifSoruAlani').classList.remove('hidden');
+            document.getElementById('ipucuKutusu').classList.add('hidden');
+            document.getElementById('durumMesaji').innerText = '';
+            
+            secimYapildi = false;
+            secilenButonIndex = null;
             
             document.getElementById('gelenSoru').innerText = data.soru;
-            document.getElementById('gelenFiyat').innerText = data.fiyat;
-            document.getElementById('durumMesaji').innerText = '';
-            secilenButon = null;
+            document.getElementById('gelenFiyat').innerText = data.fiyat || 0;
             
             const butonlarDiv = document.getElementById('butonlar');
             butonlarDiv.innerHTML = ''; 
 
+            // Şıkları oluştur
             data.siklar.forEach((sik, index) => {
                 const btn = document.createElement('button');
                 btn.innerText = sik;
-                btn.className = "sik-buton bg-gray-800 hover:bg-gray-700 border border-gray-600 transition p-5 rounded-xl font-bold text-lg shadow";
-                btn.onclick = () => cevapGonder(sik, index, btn);
+                btn.className = "sik-buton bg-gray-800 hover:bg-gray-700 border border-gray-600 p-6 rounded-2xl font-bold text-xl shadow-lg transition-all cursor-pointer";
+                
+                // Yayıncı tıkladığında
+                btn.onclick = () => {
+                    if(secimYapildi) return;
+                    secimYapildi = true;
+                    secilenButonIndex = index;
+                    
+                    // Cevabı admine gönder
+                    socket.emit('oyuncu_cevap_gonder', sik);
+                    
+                    // Görseli kilitle
+                    document.querySelectorAll('.sik-buton').forEach(b => {
+                        b.classList.remove('hover:bg-gray-700');
+                        b.style.opacity = '0.5';
+                        b.onclick = null;
+                    });
+                    btn.style.opacity = '1';
+                    btn.classList.add('ring-4', 'ring-blue-500', 'bg-blue-900');
+                    document.getElementById('durumMesaji').innerHTML = "<span class='text-blue-400'>Cevabın kilitlendi! Sunucunun sonucu açıklaması bekleniyor...</span>";
+                };
+                
                 butonlarDiv.appendChild(btn);
             });
+
+            // Geri Sayım Süresi
+            clearInterval(timerInterval);
+            const zamanAlani = document.getElementById('zamanAlani');
+            
+            if(data.sure && data.sure > 0) {
+                zamanAlani.classList.remove('hidden');
+                let toplamSure = data.sure;
+                let kalanSure = toplamSure;
+                const bar = document.getElementById('zamanBar');
+                bar.style.width = '100%';
+
+                timerInterval = setInterval(() => {
+                    kalanSure -= 0.1;
+                    let yuzde = (kalanSure / toplamSure) * 100;
+                    if (yuzde <= 0) {
+                        clearInterval(timerInterval);
+                        bar.style.width = '0%';
+                        if(!secimYapildi) {
+                            secimYapildi = true;
+                            document.getElementById('durumMesaji').innerHTML = "<span class='text-red-500'>Süre doldu!</span>";
+                            document.querySelectorAll('.sik-buton').forEach(b => { b.style.opacity = '0.5'; b.onclick = null; });
+                        }
+                    } else {
+                        bar.style.width = yuzde + '%';
+                        if(yuzde < 30) bar.classList.replace('from-blue-500', 'from-red-500');
+                    }
+                }, 100);
+            } else {
+                zamanAlani.classList.add('hidden');
+            }
         });
 
-        function cevapGonder(secilenCevap, index, btn) {
-            if(secilenButon) return; // Zaten cevap verdiyse engelle
-            
-            secilenButon = btn;
-            const isim = document.getElementById('isim').value;
-            
-            // Cevabı sunucuya gönder
-            socket.emit('izleyici_cevap_gonder', { isim, cevap: secilenCevap });
-            
-            // Tüm butonları pasif yap
-            document.querySelectorAll('.sik-buton').forEach(b => {
-                b.classList.remove('hover:bg-gray-700');
-                b.style.opacity = '0.5';
-                b.onclick = null;
-            });
-            
-            // Seçilen butonu belli et
-            btn.style.opacity = '1';
-            btn.classList.add('ring-2', 'ring-blue-500');
-            
-            document.getElementById('durumMesaji').innerText = "Cevabın iletildi! Sonuç bekleniyor...";
-        }
+        socket.on('oyuncuya_ipucu_goster', (ipucu) => {
+            document.getElementById('ipucuMetni').innerText = ipucu;
+            document.getElementById('ipucuKutusu').classList.remove('hidden');
+        });
 
-        socket.on('izleyiciye_cevabi_goster', (dogruCevapIndex) => {
+        socket.on('oyuncuya_cevabi_goster', (dogruCevapIndex) => {
+            clearInterval(timerInterval);
+            document.getElementById('zamanAlani').classList.add('hidden');
+            secimYapildi = true; // Eğer süre bitmeden veya cevaplamadan admin bitirirse kilitle
+
             const butonlar = document.querySelectorAll('.sik-buton');
-            
             butonlar.forEach((b, index) => {
+                b.style.opacity = '1';
+                b.classList.remove('ring-4', 'ring-blue-500', 'bg-blue-900', 'bg-gray-800');
+                
                 if(index === dogruCevapIndex) {
-                    b.classList.remove('bg-gray-800', 'border-gray-600');
-                    b.classList.add('bg-green-600', 'border-green-400', 'text-white', 'shadow-[0_0_15px_rgba(34,197,94,0.5)]');
-                    b.style.opacity = '1';
-                } else if(b === secilenButon) { // Yanlış seçilen buton
-                    b.classList.remove('bg-gray-800');
-                    b.classList.add('bg-red-600', 'border-red-400');
+                    // Doğru Şık Yeşil Olur
+                    b.classList.add('bg-green-600', 'border-green-400', 'text-white', 'scale-105', 'shadow-[0_0_30px_rgba(34,197,94,0.6)]');
+                } else if(index === secilenButonIndex) {
+                    // Yayıncının Seçtiği Yanlışsa Kırmızı Olur
+                    b.classList.add('bg-red-600', 'border-red-400', 'text-white');
+                } else {
+                    b.style.opacity = '0.3';
                 }
             });
 
-            if(secilenButon === butonlar[dogruCevapIndex]) {
-                document.getElementById('durumMesaji').innerHTML = "<span class='text-green-400 text-xl'>Tebrikler, doğru bildin! 🎉</span>";
+            // Sonuç Mesajı ve Konfeti
+            if(secilenButonIndex === dogruCevapIndex) {
+                document.getElementById('durumMesaji').innerHTML = "<span class='text-green-400 text-2xl'>Tebrikler, Doğru Bildin! 🎉</span>";
+                confetti({ particleCount: 150, spread: 100, origin: { y: 0.6 } });
+            } else if (secilenButonIndex === null) {
+                document.getElementById('durumMesaji').innerHTML = "<span class='text-gray-400'>Cevap vermedin. Doğru cevap yeşil ile gösterildi.</span>";
             } else {
-                document.getElementById('durumMesaji').innerHTML = "<span class='text-red-400 text-xl'>Maalesef yanlış cevap. 😔</span>";
+                document.getElementById('durumMesaji').innerHTML = "<span class='text-red-400 text-2xl'>Yanlış Cevap! ❌</span>";
             }
+            
+            // 5 Saniye Sonra Bekleme Ekranına Dön
+            setTimeout(() => {
+                document.getElementById('aktifSoruAlani').classList.add('hidden');
+                document.getElementById('beklemeMetni').classList.remove('hidden');
+                document.getElementById('beklemeMetni').innerHTML = '<h2 class="text-3xl font-extrabold text-gray-500">Hazır Ol!</h2><p class="text-gray-600 mt-2">Sunucu sıradaki soruyu gönderiyor...</p>';
+            }, 5000);
         });
     </script>
 </body>
